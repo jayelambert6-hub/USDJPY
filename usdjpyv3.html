@@ -4285,9 +4285,13 @@ async function sendEmailNotification(subject, body) {
 }
 
 function openMailto(subject, body) {
-  const mailto = `mailto:${EMAIL_TO}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  window.open(mailto, '_blank');
-  showEmailToast('✉ Email client opened for ' + EMAIL_TO, false);
+  // Use Gmail compose URL — works directly in browser, no email client needed
+  // Gmail limits URL length, so truncate body if needed
+  const maxBody = 1800;
+  const truncated = body.length > maxBody ? body.slice(0, maxBody) + '\n\n[truncated — use Export CSV for full data]' : body;
+  const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(EMAIL_TO)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(truncated)}`;
+  window.open(gmailUrl, '_blank');
+  showEmailToast('✉ Gmail compose opened — click Send in the new tab', false);
 }
 
 function showEmailToast(msg, isError) {
@@ -4298,45 +4302,99 @@ function showEmailToast(msg, isError) {
   clearTimeout(toast._timer);
   toast._timer = setTimeout(() => {
     toast.className = 'email-toast';
-  }, 4000);
+  }, 5000);
+}
+
+// ── Signal alert banner — appears at top of page when BUY/SELL fires ──────────
+function showSignalEmailBanner(signal, price, subject, body) {
+  // Remove any existing banner
+  const existing = document.getElementById('signal-alert-banner');
+  if (existing) existing.remove();
+
+  const isBuy = signal === 'BUY';
+  const col = isBuy ? '#00e5a0' : '#ff4560';
+  const bg = isBuy ? 'rgba(0,229,160,0.08)' : 'rgba(255,69,96,0.08)';
+  const dir = isBuy ? '📈' : '📉';
+
+  const banner = document.createElement('div');
+  banner.id = 'signal-alert-banner';
+  banner.style.cssText = `
+    position:fixed;top:0;left:0;right:0;z-index:500;
+    background:${bg};border-bottom:2px solid ${col};
+    padding:10px 18px;display:flex;align-items:center;gap:14px;
+    font-family:'Space Mono',monospace;font-size:0.7rem;
+    backdrop-filter:blur(4px);
+  `;
+  banner.innerHTML = `
+    <span style="color:${col};font-family:'Syne',sans-serif;font-size:1rem;font-weight:800;letter-spacing:2px">${dir} ${signal}</span>
+    <span style="color:var(--text)">USD/JPY @ <b>${price.toFixed(3)}</b></span>
+    <span style="color:var(--muted);font-size:0.58rem">New signal detected</span>
+    <button onclick="openGmailSignal('${encodeURIComponent(subject)}','${encodeURIComponent(body)}')" style="
+      margin-left:auto;padding:6px 16px;background:${col};color:#000;
+      border:none;font-family:'Syne',sans-serif;font-weight:800;font-size:0.65rem;
+      letter-spacing:2px;cursor:pointer;border-radius:3px;
+    ">✉ SEND GMAIL ALERT</button>
+    <button onclick="this.parentElement.remove()" style="
+      padding:4px 10px;background:none;border:1px solid var(--border);
+      color:var(--muted);font-family:'Space Mono',monospace;font-size:0.6rem;
+      cursor:pointer;border-radius:3px;
+    ">✕</button>
+  `;
+  document.body.prepend(banner);
+
+  // Auto-dismiss after 90 seconds if not acted on
+  setTimeout(() => { if (banner.parentElement) banner.remove(); }, 90000);
+}
+
+function openGmailSignal(encodedSubject, encodedBody) {
+  const subject = decodeURIComponent(encodedSubject);
+  const body = decodeURIComponent(encodedBody);
+  const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(EMAIL_TO)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.open(gmailUrl, '_blank');
+  showEmailToast('✉ Gmail opened — click Send to deliver the alert', false);
+  const banner = document.getElementById('signal-alert-banner');
+  if (banner) banner.remove();
 }
 
 // ── Auto Signal Email — fires whenever BUY or SELL signal is detected ────────
 let lastEmailedSignalTime = 0;
+let lastEmailedSignalType = '';
 
 function maybeSendSignalEmail(signal, price, score, reasons, tp1, tp2, tp3) {
   if (signal === 'WAIT') return;
-  // Debounce: don't email same signal within 5 minutes
-  if (Date.now() - lastEmailedSignalTime < 5 * 60 * 1000) return;
-  lastEmailedSignalTime = Date.now();
+  // Debounce: don't re-open for the same signal direction within 10 minutes
+  const now = Date.now();
+  if (signal === lastEmailedSignalType && now - lastEmailedSignalTime < 10 * 60 * 1000) return;
+  lastEmailedSignalTime = now;
+  lastEmailedSignalType = signal;
 
-  const now = new Date().toLocaleString('en-US', { timeZone: 'America/Denver' });
+  const timeStr = new Date().toLocaleString('en-US', { timeZone: 'America/Denver' });
   const dir = signal === 'BUY' ? '📈' : '📉';
-  const subject = `${dir} FXSignal ALERT: ${signal} USD/JPY @ ${price.toFixed(3)}`;
+  const subject = `${dir} FXSignal: ${signal} USD/JPY @ ${price.toFixed(3)}`;
   const body = [
     `FXSignal — USD/JPY ${signal} Alert`,
-    `═══════════════════════════════`,
+    `${'═'.repeat(34)}`,
     `Signal:  ${signal}`,
     `Price:   ${price.toFixed(3)}`,
     `Score:   ${score >= 0 ? '+' : ''}${score}`,
-    `Time:    ${now} (MST)`,
+    `Time:    ${timeStr} (MST)`,
     ``,
     `Take Profit Levels:`,
     `  TP1: ${tp1.toFixed(3)}`,
     `  TP2: ${tp2.toFixed(3)}`,
     `  TP3: ${tp3.toFixed(3)}`,
     ``,
-    `Top Reasons:`,
-    `  ${reasons}`,
+    `Top Reasons: ${reasons}`,
     ``,
     `Session: ${currentSession}`,
     `Regime:  ${currentRegime ? currentRegime.name.replace(/_/g,' ') : '—'}`,
     `Wyckoff: ${currentWy}`,
     ``,
-    `— FXSignal Bot · USD/JPY`,
+    `— FXSignal Bot`,
   ].join('\n');
 
-  openMailto(subject, body);
+  // Show a banner with a clickable Send button so user is aware and in control
+  showSignalEmailBanner(signal, price, subject, body);
 }
 
 // ── Email today's signal history ──────────────────────────────────────────────

@@ -393,17 +393,6 @@ canvas{width:100% !important;}
 /* ── Change key button ── */
 .change-key-btn{font-size:0.48rem;padding:3px 8px;background:transparent;border:1px solid var(–border);color:var(–muted);border-radius:3px;cursor:pointer;letter-spacing:1px;}
 .change-key-btn:hover{border-color:var(–accent);color:var(–text);}
-
-/* ── Email notification banner ── */
-.email-toast{position:fixed;bottom:18px;right:18px;z-index:999;background:var(–surface);border:1px solid var(–accent);padding:10px 16px;font-size:0.62rem;border-radius:5px;color:var(–accent);display:none;max-width:340px;box-shadow:0 4px 20px rgba(0,229,160,0.15);}
-.email-toast.error{border-color:var(–sell);color:var(–sell);}
-.email-toast.show{display:block;animation:toastIn 0.3s ease;}
-@keyframes toastIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
-
-/* ── Full history panel ── */
-.history-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;}
-.hist-stat{font-size:0.52rem;color:var(–muted);}
-.hist-stat b{color:var(–text);}
 </style>
 
 </head>
@@ -497,6 +486,7 @@ canvas{width:100% !important;}
     <div class="sbar"></div><div class="sbar"></div>
   </div>
   <div class="sig-reason" id="sig-reason">Awaiting data...</div>
+  <div id="sig-add-flag" style="display:none;margin:6px 0;padding:6px 10px;border-radius:4px;background:rgba(245,166,35,0.12);border:1px solid var(--wait);color:var(--wait);font-size:0.52rem;line-height:1.5;letter-spacing:0.5px;font-weight:600"></div>
   <div class="sig-age" id="sig-age">Last signal: —</div>
   <div class="mtf-row">
     <div class="mtf-col"><div class="mtf-label">D</div><div class="mtf-pill mtf-wait" id="mtf-d">—</div></div>
@@ -936,7 +926,6 @@ canvas{width:100% !important;}
     <span class="db-stat">Overall W%: <b id="db-wr">—</b></span>
     <span class="db-stat">Avg pip: <b id="db-avgpip">—</b></span>
     <button class="db-btn" onclick="exportSignalCSV()">⬇ EXPORT CSV</button>
-    <button class="db-btn" style="background:rgba(0,229,160,0.08);border-color:var(--accent);color:var(--accent)" onclick="emailSignalCSV()">✉ EMAIL CSV</button>
     <button class="db-btn" onclick="document.getElementById('csv-import').click()">⬆ IMPORT CSV</button>
     <input type="file" id="csv-import" accept=".csv" style="display:none" onchange="importSignalCSV(event)">
     <button class="db-btn danger" onclick="clearSignalDB()">✕ CLEAR DB</button>
@@ -955,9 +944,6 @@ canvas{width:100% !important;}
 <!-- SIGNAL HISTORY · full width · auto-recorded · clears at session end -->
 <div class="card col-span-3">
   <div class="card-title">Signal History · Today · Auto-Recorded · Clears at Market Close</div>
-  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
-    <button class="db-btn" onclick="emailTodayHistory()" style="background:rgba(0,229,160,0.08);border-color:var(--accent);color:var(--accent)">✉ EMAIL TODAY'S HISTORY</button>
-  </div>
   <div id="sig-history-empty" style="font-size:0.58rem;color:var(--muted);padding:6px 0">Waiting for first signal of the day...</div>
   <table class="log-table" id="sig-history-table" style="display:none">
     <thead><tr>
@@ -968,50 +954,14 @@ canvas{width:100% !important;}
     <tbody id="sig-history-body"></tbody>
   </table>
 </div>
-
-<!-- FULL ALL-TIME TRADE HISTORY · persists indefinitely in IndexedDB -->
-<div class="card col-span-3">
-  <div class="card-title">Full Trade History · All-Time · IndexedDB · Never Clears</div>
-  <div class="history-toolbar">
-    <span class="hist-stat">All-time signals: <b id="fh-total">0</b></span>
-    <span class="hist-stat">Wins: <b id="fh-wins" style="color:#00e5a0">0</b></span>
-    <span class="hist-stat">Losses: <b id="fh-losses" style="color:#ff4560">0</b></span>
-    <span class="hist-stat">Win%: <b id="fh-wr">—</b></span>
-    <button class="db-btn" onclick="exportFullHistoryCSV()">⬇ EXPORT FULL CSV</button>
-    <button class="db-btn" style="background:rgba(0,229,160,0.08);border-color:var(--accent);color:var(--accent)" onclick="emailFullHistoryCSV()">✉ EMAIL FULL CSV</button>
-  </div>
-  <div id="fh-empty" style="font-size:0.58rem;color:var(--muted);padding:6px 0">No trades recorded yet.</div>
-  <table class="log-table" id="fh-table" style="display:none">
-    <thead><tr>
-      <th>DATE</th><th>TIME</th><th>SIGNAL</th><th>PRICE</th><th>SCORE</th>
-      <th>TP1</th><th>TP2</th><th>TP3</th><th>TP HIT</th><th>WIN</th>
-      <th>REGIME</th><th>SESSION</th><th>WYCKOFF</th>
-    </tr></thead>
-    <tbody id="fh-body"></tbody>
-  </table>
-</div>
 ```
 
   </div>
 </div>
 
 <script>
-// ── API Keys Rotation ────────────────────────────────────────────────
-const API_KEYS = ["90769645c90546618595f0d6856942b3", "8b2aee4e6be14540a54f89a845629a08", "862c144634f341a8be659c3e39685261"];
-let currentKeyIndex = 0;
-
-function getAPIKey() {
-    const key = API_KEYS[currentKeyIndex];
-    currentKeyIndex++;
-    if (currentKeyIndex >= API_KEYS.length) currentKeyIndex = 0;
-    return key;
-}
-
-// Set the initial key
-let API_KEY = getAPIKey();
-
 // ── State ─────────────────────────────────────────────────────────────────────
-let INTERVAL=120000;
+let API_KEY='', INTERVAL=120000;
 let candles5m=[], candles15m=[], candles1h=[], candles4h=[], candlesD=[], candlesDXY=[];
 let ohlcv5m=[], ohlcv15m=[], ohlcv1h=[], ohlcv4h=[];
 let currentPrice=0, currentDXY=0;
@@ -1043,52 +993,27 @@ let lastActionableSignal=null;  // last BUY or SELL signal entry
 let lastDayKey='';              // YYYY-MM-DD used for daily clear
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
-async function startApp() {
-    const btn = document.getElementById('setup-btn');
-    btn.textContent = 'CONNECTING...'; 
-    btn.disabled = true;
-
-    try {
-        // Test the first API key from rotation
-        const r = await fetch(`https://api.twelvedata.com/price?symbol=USD/JPY&apikey=${getAPIKey()}`);
-        const d = await r.json();
-
-        if (d.status === 'error') {
-            btn.textContent = 'CONNECT →';
-            btn.disabled = false;
-            showSetupErr('Key rejected: ' + d.message);
-            return;
-        }
-    } catch (e) {
-        btn.textContent = 'CONNECT →';
-        btn.disabled = false;
-        showSetupErr('Network error. Check connection.');
-        return;
-    }
-
-    // Set INTERVAL from your dropdown or default
-    INTERVAL = parseInt(document.getElementById('int-sel')?.value || INTERVAL);
-
-    // Hide setup UI and show main app
-    document.getElementById('setup').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
-
-    // Start your bot loops
-    fetchAll();
-    setInterval(fetchAll, INTERVAL);
-    setInterval(tickClock, 1000);
-    startCountdown();
-
-    // Redraw charts on resize
-    window.addEventListener('resize', () => {
-        if (ohlcv5m.length) {
-            drawChart();
-            renderLiqHeatmap(ohlcv5m, candles15m, candles1h, candles4h);
-        }
-    });
-
-    // Show connected status
-    btn.textContent = 'CONNECTED ✅';
+async function startApp(){
+  const key=document.getElementById('api-input').value.trim();
+  if(!key||key.length<8){showSetupErr('Please enter a valid API key.');return;}
+  const btn=document.getElementById('setup-btn');
+  btn.textContent='TESTING KEY...'; btn.disabled=true;
+  try{
+    const r=await fetch(`https://api.twelvedata.com/price?symbol=USD/JPY&apikey=${key}`);
+    const d=await r.json();
+    if(d.status==='error'){btn.textContent='CONNECT →';btn.disabled=false;showSetupErr('Key rejected: '+d.message);return;}
+  }catch(e){btn.textContent='CONNECT →';btn.disabled=false;showSetupErr('Network error. Check connection.');return;}
+  API_KEY=key;
+  INTERVAL=parseInt(document.getElementById('int-sel').value);
+  document.getElementById('setup').style.display='none';
+  document.getElementById('app').style.display='block';
+  fetchAll();
+  setInterval(fetchAll, INTERVAL);
+  setInterval(tickClock, 1000);
+  startCountdown();
+  window.addEventListener('resize',()=>{
+    if(ohlcv5m.length){drawChart();renderLiqHeatmap(ohlcv5m,candles15m,candles1h,candles4h);}
+  });
 }
 function showSetupErr(m){const e=document.getElementById('setup-err');e.textContent=m;e.style.display='block';}
 function startCountdown(){
@@ -1118,11 +1043,11 @@ function updateSignalAge(){
 }
 
 // ── Fetch ─────────────────────────────────────────────────────────────────────
-async function fetchTS(sym, interval, size = 500) {
-    const r = await fetch(`https://api.twelvedata.com/time_series?symbol=${sym}&interval=${interval}&outputsize=${size}&apikey=${getAPIKey()}`);
-    const d = await r.json();
-    if (d.status === 'error') throw new Error(`${sym} ${interval}: ${d.message}`);
-    return d.values.reverse();
+async function fetchTS(sym,interval,size=500){
+  const r=await fetch(`https://api.twelvedata.com/time_series?symbol=${sym}&interval=${interval}&outputsize=${size}&apikey=${API_KEY}`);
+  const d=await r.json();
+  if(d.status==='error') throw new Error(`${sym} ${interval}: ${d.message}`);
+  return d.values.reverse();
 }
 async function fetchAll(){
   setLive('FETCHING...'); startCountdown();
@@ -2955,6 +2880,38 @@ function setSignalUI(signal,score,scoreMap,suppressMsg){
   const isActionable=signal==='BUY'||signal==='SELL';
   const signalChanged=signal!==currentSignal;
 
+  // Same-direction suppression: if new signal is same direction as recent signal
+  // within 60 minutes, it's an add-to-position opportunity, not a fresh entry.
+  // Flag it visually rather than creating a new entry that muddies the history.
+  const SAME_DIR_WINDOW=60*60*1000; // 60 minutes
+  const sameDir=isActionable&&lastActionableSignal&&
+    !lastActionableSignal.closed&&
+    signal===lastActionableSignal.type&&
+    (Date.now()-lastActionableSignal.timestamp)<SAME_DIR_WINDOW;
+  if(sameDir){
+    // Show an "ADD" flag on the signal card instead of overwriting
+    const addEl=document.getElementById('sig-add-flag');
+    if(addEl){
+      addEl.textContent=`▲ ADD TO ${signal} — same direction within 60min. Entry @ ${currentPrice.toFixed(3)}, score ${(score>=0?'+':'')+score}. Consider adding to existing position rather than opening new trade.`;
+      addEl.style.display='block';
+    }
+    // Still update score display and indicators but don't create new history entry
+    currentSignal=signal;
+    const el=document.getElementById('signal-el');
+    el.textContent=signal;el.className=`signal-display signal-${signal.toLowerCase()}`;
+    const col=signal==='BUY'?'var(--buy)':'var(--sell)';
+    const str=Math.min(5,Math.round(Math.abs(score)/4));
+    document.querySelectorAll('.sbar').forEach((b,i)=>b.style.background=i<str?col:'var(--border)');
+    document.getElementById('sig-reason').textContent=suppressMsg||`ADD TO ${signal} · `+Object.entries(scoreMap).filter(([,v])=>v!==0).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1])).slice(0,5).map(([k,v])=>`${k}:${v>0?'+':''}${v}`).join(' · ');
+    document.getElementById('stat-signal').textContent=signal;
+    document.getElementById('stat-signal').style.color=col;
+    updateTPDisplay();
+    return; // skip creating new history entry
+  }
+  // Clear ADD flag when direction genuinely changes
+  const addEl=document.getElementById('sig-add-flag');
+  if(addEl) addEl.style.display='none';
+
   // Auto-record: when a new BUY/SELL fires, record it. When signal changes away from
   // an actionable signal, mark the previous entry with the "next signal" and TP outcome.
   if(signalChanged){
@@ -2964,14 +2921,11 @@ function setSignalUI(signal,score,scoreMap,suppressMsg){
       const atr=lastInd.atr||0.05;
       const isBuy=prev.type==='BUY';
       const mult=isBuy?1:-1;
-      const tp1=+(prev.price+mult*atr).toFixed(3);
-      const tp2=+(prev.price+mult*atr*2).toFixed(3);
-      const tp3=+(prev.price+mult*atr*3).toFixed(3);
-      const p=currentPrice;
-      const tp1Hit=isBuy?p>=tp1:p<=tp1;
-      const tp2Hit=isBuy?p>=tp2:p<=tp2;
-      const tp3Hit=isBuy?p>=tp3:p<=tp3;
-      prev.tp1=tp1;prev.tp2=tp2;prev.tp3=tp3;
+      // Use watermark (best price reached) not just current price at close moment
+      const best=prev.bestPrice!==undefined?prev.bestPrice:currentPrice;
+      const tp1Hit=isBuy?best>=prev.tp1:best<=prev.tp1;
+      const tp2Hit=isBuy?best>=prev.tp2:best<=prev.tp2;
+      const tp3Hit=isBuy?best>=prev.tp3:best<=prev.tp3;
       prev.tpHit=tp3Hit?'TP3':tp2Hit?'TP2':tp1Hit?'TP1':'—';
       prev.nextSig=signal;
       prev.nextSigTime=new Date().toTimeString().split(' ')[0];
@@ -2986,7 +2940,16 @@ function setSignalUI(signal,score,scoreMap,suppressMsg){
       const mult=isBuy?1:-1;
       const p=currentPrice;
 
-      // Use fib extensions for TP targets if available, else ATR multiples
+      // Regime-aware ATR multipliers for TP fallback
+      // Trending regimes can sustain 40+ pip moves — tight TPs leave money on table
+      const regime=currentRegime?currentRegime.name:'RANGING';
+      const isTrending=regime==='TRENDING_BULL'||regime==='TRENDING_BEAR';
+      const isBreakout=regime==='BREAKOUT';
+      const atrM1=isTrending?3:isBreakout?2:1;
+      const atrM2=isTrending?6:isBreakout?4:2;
+      const atrM3=isTrending?10:isBreakout?7:3;
+
+      // Use fib extensions for TP targets if available, else regime-scaled ATR
       let tp1,tp2,tp3,tp1Lbl,tp2Lbl,tp3Lbl;
       if(currentFib&&currentFib.levels.length){
         const extLevels=currentFib.levels
@@ -2995,37 +2958,31 @@ function setSignalUI(signal,score,scoreMap,suppressMsg){
         const retLevels=currentFib.levels
           .filter(l=>l.type==='retrace'&&(isBuy?l.price>p:l.price<p))
           .sort((a,b)=>isBuy?a.price-b.price:b.price-a.price);
-        // TP1 = nearest retrace/ext, TP2 = 161.8% ext, TP3 = 261.8% ext
         const t1=retLevels[0]||extLevels[0];
         const t2=extLevels.find(l=>l.pct===161.8)||extLevels[1]||extLevels[0];
         const t3=extLevels.find(l=>l.pct===261.8)||extLevels[2]||extLevels[1];
-        tp1=t1?t1.price:+(p+mult*atr).toFixed(3);
-        tp2=t2?t2.price:+(p+mult*atr*2).toFixed(3);
-        tp3=t3?t3.price:+(p+mult*atr*3).toFixed(3);
-        tp1Lbl=t1?`${t1.pct}% fib`:'1×ATR';
-        tp2Lbl=t2?`${t2.pct}% ext`:'2×ATR';
-        tp3Lbl=t3?`${t3.pct}% ext`:'3×ATR';
+        tp1=t1?t1.price:+(p+mult*atr*atrM1).toFixed(3);
+        tp2=t2?t2.price:+(p+mult*atr*atrM2).toFixed(3);
+        tp3=t3?t3.price:+(p+mult*atr*atrM3).toFixed(3);
+        tp1Lbl=t1?`${t1.pct}% fib`:`${atrM1}×ATR`;
+        tp2Lbl=t2?`${t2.pct}% ext`:`${atrM2}×ATR`;
+        tp3Lbl=t3?`${t3.pct}% ext`:`${atrM3}×ATR`;
       } else {
-        tp1=+(p+mult*atr).toFixed(3);   tp1Lbl='1×ATR';
-        tp2=+(p+mult*atr*2).toFixed(3); tp2Lbl='2×ATR';
-        tp3=+(p+mult*atr*3).toFixed(3); tp3Lbl='3×ATR';
+        tp1=+(p+mult*atr*atrM1).toFixed(3); tp1Lbl=`${atrM1}×ATR`;
+        tp2=+(p+mult*atr*atrM2).toFixed(3); tp2Lbl=`${atrM2}×ATR`;
+        tp3=+(p+mult*atr*atrM3).toFixed(3); tp3Lbl=`${atrM3}×ATR`;
       }
 
-      const topReasonsStr=Object.entries(scoreMap).filter(([,v])=>v!==0).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1])).slice(0,3).map(([k,v])=>`${k}:${v>0?'+':''}${v}`).join(' ');
       const entry={
         time:now,timestamp:Date.now(),type:signal,price:p,
         score:(score>=0?'+':'')+score,wy:currentWy,session:currentSession,
         tp1,tp2,tp3,tp1Lbl,tp2Lbl,tp3Lbl,
         tpHit:'—',nextSig:'—',nextSigTime:'',closed:false,
-        topReasons:topReasonsStr
+        topReasons:Object.entries(scoreMap).filter(([,v])=>v!==0).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1])).slice(0,3).map(([k,v])=>`${k}:${v>0?'+':''}${v}`).join(' ')
       };
       signalHistory.unshift(entry);
       lastActionableSignal=entry;
       if(signalHistory.length>50) signalHistory.pop();
-      // ── Send email alert for new BUY/SELL signal ──
-      if(typeof maybeSendSignalEmail==='function'){
-        maybeSendSignalEmail(signal,p,score,topReasonsStr,tp1,tp2,tp3);
-      }
     }
     if(signal==='WAIT') lastActionableSignal=null;
     lastSignalChangeTime=Date.now();
@@ -3057,7 +3014,6 @@ function setSignalUI(signal,score,scoreMap,suppressMsg){
   }
   updateSignalAge();
   renderSignalHistory();
-  if(typeof renderFullHistory==='function') renderFullHistory();
 }
 
 function setPill(id,s){const el=document.getElementById(id);el.textContent=s;el.className=`mtf-pill mtf-${s.toLowerCase()}`;}
@@ -3548,13 +3504,21 @@ function updateTPDisplay(){
     return;
   }
   _paintTP(lastActionableSignal,false);
-  // Also live-update tpHit on the active entry
+  // Also live-update tpHit on the active entry using HIGH-WATERMARK
+  // Track the best price reached since entry so TP hits aren't missed
+  // if price runs to target and pulls back before the next signal fires.
   const e=lastActionableSignal;
   const p=currentPrice;
   const isBuy=e.type==='BUY';
-  const tp1Hit=isBuy?p>=e.tp1:p<=e.tp1;
-  const tp2Hit=isBuy?p>=e.tp2:p<=e.tp2;
-  const tp3Hit=isBuy?p>=e.tp3:p<=e.tp3;
+  if(isBuy){
+    if(e.bestPrice===undefined||p>e.bestPrice) e.bestPrice=p;
+  } else {
+    if(e.bestPrice===undefined||p<e.bestPrice) e.bestPrice=p;
+  }
+  const best=e.bestPrice!==undefined?e.bestPrice:p;
+  const tp1Hit=isBuy?best>=e.tp1:best<=e.tp1;
+  const tp2Hit=isBuy?best>=e.tp2:best<=e.tp2;
+  const tp3Hit=isBuy?best>=e.tp3:best<=e.tp3;
   e.tpHit=tp3Hit?'TP3':tp2Hit?'TP2':tp1Hit?'TP1':'—';
   renderSignalHistory();
 }
@@ -3782,7 +3746,6 @@ function openIDB(){
       rederiveLearning();
       updateDBStats();
       renderPatternAnalysis();
-      if(typeof renderFullHistory==='function') renderFullHistory();
     };
     req.onerror=()=>rej(req.error);
   });
@@ -3842,9 +3805,6 @@ function buildSignalRecord(entry){
     tp1Hit:tp1Hit?1:0,
     tp2Hit:tp2Hit?1:0,
     tp3Hit:tp3Hit?1:0,
-    tp1Price:entry.tp1,
-    tp2Price:entry.tp2,
-    tp3Price:entry.tp3,
     pipOutcome,
     nextSignal:entry.nextSig||'—',
     regime:currentRegime?currentRegime.name:'UNKNOWN',
@@ -3869,7 +3829,6 @@ function recordSignalOutcome(signal){
     rederiveLearning();
     updateDBStats();
     renderPatternAnalysis();
-    if(typeof renderFullHistory==='function') renderFullHistory();
   });
 }
 
@@ -4242,341 +4201,5 @@ document.addEventListener('DOMContentLoaded', ()=>{
 });
 </script>
 
-<!-- Email Toast Notification -->
-
-<div class="email-toast" id="email-toast"></div>
-
-<script>
-// ══════════════════════════════════════════════════════════════════════════════
-// EMAIL NOTIFICATION SYSTEM
-// Uses EmailJS (free tier — 200 emails/month) via their public API.
-// No backend required. All sent from browser.
-// Target: jayelambert6@gmail.com
-// ══════════════════════════════════════════════════════════════════════════════
-
-const EMAIL_TO = 'jayelambert6@gmail.com';
-
-// EmailJS config — uses the public API directly (no SDK needed)
-// Uses a mailto: fallback if EmailJS is unavailable
-async function sendEmailNotification(subject, body) {
-  try {
-    // Use mailto as the primary method (opens email client)
-    // For automated sending, we use the EmailJS public API
-    const result = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        service_id: 'service_default',
-        template_id: 'template_signal',
-        user_id: 'user_fxsignal',
-        template_params: {
-          to_email: EMAIL_TO,
-          subject: subject,
-          message: body,
-        }
-      })
-    });
-    // EmailJS often returns non-JSON for free/anon tier — that's OK
-    showEmailToast('✉ Email sent to ' + EMAIL_TO, false);
-  } catch(e) {
-    // Fallback: open mailto link so user can send manually
-    openMailto(subject, body);
-  }
-}
-
-function openMailto(subject, body) {
-  // Use Gmail compose URL — works directly in browser, no email client needed
-  // Gmail limits URL length, so truncate body if needed
-  const maxBody = 1800;
-  const truncated = body.length > maxBody ? body.slice(0, maxBody) + '\n\n[truncated — use Export CSV for full data]' : body;
-  const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(EMAIL_TO)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(truncated)}`;
-  window.open(gmailUrl, '_blank');
-  showEmailToast('✉ Gmail compose opened — click Send in the new tab', false);
-}
-
-function showEmailToast(msg, isError) {
-  const toast = document.getElementById('email-toast');
-  if (!toast) return;
-  toast.textContent = msg;
-  toast.className = 'email-toast show' + (isError ? ' error' : '');
-  clearTimeout(toast._timer);
-  toast._timer = setTimeout(() => {
-    toast.className = 'email-toast';
-  }, 5000);
-}
-
-// ── Signal alert banner — appears at top of page when BUY/SELL fires ──────────
-function showSignalEmailBanner(signal, price, subject, body) {
-  // Remove any existing banner
-  const existing = document.getElementById('signal-alert-banner');
-  if (existing) existing.remove();
-
-  const isBuy = signal === 'BUY';
-  const col = isBuy ? '#00e5a0' : '#ff4560';
-  const bg = isBuy ? 'rgba(0,229,160,0.08)' : 'rgba(255,69,96,0.08)';
-  const dir = isBuy ? '📈' : '📉';
-
-  const banner = document.createElement('div');
-  banner.id = 'signal-alert-banner';
-  banner.style.cssText = `
-    position:fixed;top:0;left:0;right:0;z-index:500;
-    background:${bg};border-bottom:2px solid ${col};
-    padding:10px 18px;display:flex;align-items:center;gap:14px;
-    font-family:'Space Mono',monospace;font-size:0.7rem;
-    backdrop-filter:blur(4px);
-  `;
-  banner.innerHTML = `
-    <span style="color:${col};font-family:'Syne',sans-serif;font-size:1rem;font-weight:800;letter-spacing:2px">${dir} ${signal}</span>
-    <span style="color:var(--text)">USD/JPY @ <b>${price.toFixed(3)}</b></span>
-    <span style="color:var(--muted);font-size:0.58rem">New signal detected</span>
-    <button onclick="openGmailSignal('${encodeURIComponent(subject)}','${encodeURIComponent(body)}')" style="
-      margin-left:auto;padding:6px 16px;background:${col};color:#000;
-      border:none;font-family:'Syne',sans-serif;font-weight:800;font-size:0.65rem;
-      letter-spacing:2px;cursor:pointer;border-radius:3px;
-    ">✉ SEND GMAIL ALERT</button>
-    <button onclick="this.parentElement.remove()" style="
-      padding:4px 10px;background:none;border:1px solid var(--border);
-      color:var(--muted);font-family:'Space Mono',monospace;font-size:0.6rem;
-      cursor:pointer;border-radius:3px;
-    ">✕</button>
-  `;
-  document.body.prepend(banner);
-
-  // Auto-dismiss after 90 seconds if not acted on
-  setTimeout(() => { if (banner.parentElement) banner.remove(); }, 90000);
-}
-
-function openGmailSignal(encodedSubject, encodedBody) {
-  const subject = decodeURIComponent(encodedSubject);
-  const body = decodeURIComponent(encodedBody);
-  const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(EMAIL_TO)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  window.open(gmailUrl, '_blank');
-  showEmailToast('✉ Gmail opened — click Send to deliver the alert', false);
-  const banner = document.getElementById('signal-alert-banner');
-  if (banner) banner.remove();
-}
-
-// ── Auto Signal Email — fires whenever BUY or SELL signal is detected ────────
-let lastEmailedSignalTime = 0;
-let lastEmailedSignalType = '';
-
-function maybeSendSignalEmail(signal, price, score, reasons, tp1, tp2, tp3) {
-  if (signal === 'WAIT') return;
-  // Debounce: don't re-open for the same signal direction within 10 minutes
-  const now = Date.now();
-  if (signal === lastEmailedSignalType && now - lastEmailedSignalTime < 10 * 60 * 1000) return;
-  lastEmailedSignalTime = now;
-  lastEmailedSignalType = signal;
-
-  const timeStr = new Date().toLocaleString('en-US', { timeZone: 'America/Denver' });
-  const dir = signal === 'BUY' ? '📈' : '📉';
-  const subject = `${dir} FXSignal: ${signal} USD/JPY @ ${price.toFixed(3)}`;
-  const body = [
-    `FXSignal — USD/JPY ${signal} Alert`,
-    `${'═'.repeat(34)}`,
-    `Signal:  ${signal}`,
-    `Price:   ${price.toFixed(3)}`,
-    `Score:   ${score >= 0 ? '+' : ''}${score}`,
-    `Time:    ${timeStr} (MST)`,
-    ``,
-    `Take Profit Levels:`,
-    `  TP1: ${tp1.toFixed(3)}`,
-    `  TP2: ${tp2.toFixed(3)}`,
-    `  TP3: ${tp3.toFixed(3)}`,
-    ``,
-    `Top Reasons: ${reasons}`,
-    ``,
-    `Session: ${currentSession}`,
-    `Regime:  ${currentRegime ? currentRegime.name.replace(/_/g,' ') : '—'}`,
-    `Wyckoff: ${currentWy}`,
-    ``,
-    `— FXSignal Bot`,
-  ].join('\n');
-
-  // Show a banner with a clickable Send button so user is aware and in control
-  showSignalEmailBanner(signal, price, subject, body);
-}
-
-// ── Email today's signal history ──────────────────────────────────────────────
-function emailTodayHistory() {
-  const actionable = signalHistory.filter(e => e.type === 'BUY' || e.type === 'SELL');
-  if (!actionable.length) {
-    showEmailToast('No signals today to email.', true);
-    return;
-  }
-  const now = new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' });
-  const subject = `FXSignal — Today's Signal History (${now})`;
-  const header = ['TIME', 'SIGNAL', 'PRICE', 'SCORE', 'TP1', 'TP2', 'TP3', 'TP HIT', 'NEXT SIG', 'WYCKOFF', 'SESSION'].join('\t');
-  const rows = actionable.map(e =>
-    [e.time, e.type, e.price.toFixed(3), e.score,
-     e.tp1.toFixed(3), e.tp2.toFixed(3), e.tp3.toFixed(3),
-     e.tpHit, e.nextSig !== '—' ? `${e.nextSig} @ ${e.nextSigTime}` : (e.closed ? 'WAIT' : 'active'),
-     e.wy, e.session].join('\t')
-  );
-  const body = `FXSignal — Today's Trades (${now})\n${'─'.repeat(60)}\n${header}\n${rows.join('\n')}`;
-  openMailto(subject, body);
-}
-
-// ── Get all signal data — combines IndexedDB closed signals + today's in-memory ──
-async function getAllSignalData() {
-  // Get closed signals from IndexedDB
-  const idbRecords = await idbGetAll();
-
-  // Convert today's in-memory signalHistory into compatible records for anything not yet in IDB
-  const todayRecords = (signalHistory || [])
-    .filter(e => e.type === 'BUY' || e.type === 'SELL')
-    .map(e => {
-      const scoreNum = parseInt(e.score) || 0;
-      return {
-        date: new Date(e.timestamp).toISOString().slice(0, 10),
-        time: e.time,
-        signal: e.type,
-        price: e.price,
-        score: scoreNum,
-        scoreAbs: Math.abs(scoreNum),
-        scoreBracket: Math.abs(scoreNum) >= 16 ? '16+' : Math.abs(scoreNum) >= 12 ? '12-15' : Math.abs(scoreNum) >= 8 ? '8-11' : '<8',
-        tpHit: e.tpHit || '—',
-        win: e.tpHit && e.tpHit !== '—' ? 1 : e.closed ? 0 : '',
-        tp1Hit: (e.tpHit === 'TP1' || e.tpHit === 'TP2' || e.tpHit === 'TP3') ? 1 : 0,
-        tp2Hit: (e.tpHit === 'TP2' || e.tpHit === 'TP3') ? 1 : 0,
-        tp3Hit: e.tpHit === 'TP3' ? 1 : 0,
-        tp1Price: e.tp1,
-        tp2Price: e.tp2,
-        tp3Price: e.tp3,
-        pipOutcome: '',
-        nextSignal: e.nextSig || '—',
-        regime: currentRegime ? currentRegime.name : '—',
-        regimeConf: currentRegime ? currentRegime.conf : 0,
-        session: e.session || '—',
-        wyckoff: e.wy || '—',
-        atrPip: '',
-        smfScore: '',
-        smfBias: currentSMF ? currentSMF.instBias : '—',
-        vepProb: '',
-        intervRisk: '',
-        liqHuntBias: '',
-        topSources: e.topReasons || '—',
-        _inMemory: true,
-      };
-    });
-
-  // Merge: IDB records take priority; only add in-memory entries not already saved
-  // A signal is "in IDB" if a record with the same time+signal exists
-  const idbKeys = new Set(idbRecords.map(r => `${r.date}_${r.time}_${r.signal}`));
-  const newToday = todayRecords.filter(r => !idbKeys.has(`${r.date}_${r.time}_${r.signal}`));
-
-  return [...idbRecords, ...newToday];
-}
-
-// ── Email the full signal log CSV ─────────────────────────────────────────────
-async function emailSignalCSV() {
-  const all = await getAllSignalData();
-  if (!all.length) {
-    showEmailToast('No signals yet — wait for the bot to generate a BUY or SELL signal first.', true);
-    return;
-  }
-  const csv = buildCSV(all);
-  const now = new Date().toISOString().slice(0, 10);
-  const subject = `FXSignal — Full Signal Log CSV (${now}) · ${all.length} trades`;
-  const body = `FXSignal Full Signal Log — exported ${now}\n${all.length} total signals\n\nCopy everything below the dashed line into a .csv file to open in Excel/Sheets.\n\n${'─'.repeat(60)}\n${csv}`;
-  openMailto(subject, body);
-}
-
-// ── Email full history as CSV ──────────────────────────────────────────────────
-async function emailFullHistoryCSV() {
-  await emailSignalCSV();
-}
-
-// ── Export full history CSV (download) ────────────────────────────────────────
-async function exportFullHistoryCSV() {
-  const all = await getAllSignalData();
-  if (!all.length) { alert('No signal data yet.'); return; }
-  const csv = buildCSV(all);
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `fxsignal_full_history_${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
-
-// ── Shared CSV builder ─────────────────────────────────────────────────────────
-function buildCSV(records) {
-  const cols = ['date','time','signal','price','score','scoreAbs','scoreBracket',
-    'tpHit','win','tp1Hit','tp2Hit','tp3Hit','tp1Price','tp2Price','tp3Price',
-    'pipOutcome','nextSignal','regime','regimeConf','session','wyckoff','atrPip',
-    'smfScore','smfBias','vepProb','intervRisk','liqHuntBias','topSources'];
-  const header = cols.join(',');
-  const rows = records.map(r => cols.map(c => {
-    let v = r[c] === undefined || r[c] === null ? '' : String(r[c]);
-    // Format numeric prices to 3dp
-    if ((c === 'price' || c === 'tp1Price' || c === 'tp2Price' || c === 'tp3Price') && v && !isNaN(v)) {
-      v = parseFloat(v).toFixed(3);
-    }
-    return v.includes(',') ? `"${v}"` : v;
-  }).join(','));
-  return [header, ...rows].join('\n');
-}
-
-// ── Render Full Trade History table ───────────────────────────────────────────
-async function renderFullHistory() {
-  const all = await getAllSignalData();
-  const empty = document.getElementById('fh-empty');
-  const tbl = document.getElementById('fh-table');
-  const body = document.getElementById('fh-body');
-  const totalEl = document.getElementById('fh-total');
-  const winsEl = document.getElementById('fh-wins');
-  const lossEl = document.getElementById('fh-losses');
-  const wrEl = document.getElementById('fh-wr');
-  if (!body) return;
-
-  // Update stats
-  const closed = all.filter(r => r.win === 1 || r.win === 0);
-  const wins = closed.filter(r => r.win === 1).length;
-  const losses = closed.length - wins;
-  const wr = closed.length ? Math.round((wins / closed.length) * 100) : null;
-  if (totalEl) totalEl.textContent = all.length;
-  if (winsEl)  winsEl.textContent = wins;
-  if (lossEl)  lossEl.textContent = losses;
-  if (wrEl)    wrEl.textContent = wr !== null ? wr + '%' : '—';
-
-  if (!all.length) {
-    if (empty) empty.style.display = 'block';
-    if (tbl) tbl.style.display = 'none';
-    return;
-  }
-  if (empty) empty.style.display = 'none';
-  if (tbl) tbl.style.display = '';
-
-  // Sort: newest first. IDB records have numeric timestamps; in-memory have timestamps too.
-  const sorted = [...all].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-  body.innerHTML = sorted.map(r => {
-    const isBuy = r.signal === 'BUY';
-    const sigCol = isBuy ? 'var(--buy)' : r.signal === 'SELL' ? 'var(--sell)' : 'var(--muted)';
-    const winCol = r.win === 1 ? 'var(--buy)' : r.win === 0 ? 'var(--sell)' : 'var(--muted)';
-    const winLabel = r.win === 1 ? 'WIN' : r.win === 0 ? 'LOSS' : r._inMemory ? 'OPEN' : '—';
-    const tpCol = r.tpHit === 'TP3' ? 'var(--buy)' : r.tpHit === 'TP2' ? 'var(--accent2)' : r.tpHit === 'TP1' ? 'var(--wait)' : 'var(--muted)';
-    const scoreVal = parseFloat(r.score) || 0;
-    const scoreCol = scoreVal > 0 ? 'var(--buy)' : scoreVal < 0 ? 'var(--sell)' : 'var(--muted)';
-    const tp1 = r.tp1Price != null ? parseFloat(r.tp1Price).toFixed(3) : '—';
-    const tp2 = r.tp2Price != null ? parseFloat(r.tp2Price).toFixed(3) : '—';
-    const tp3 = r.tp3Price != null ? parseFloat(r.tp3Price).toFixed(3) : '—';
-    const inMemBadge = r._inMemory ? ' <span style="font-size:0.45rem;color:var(--wait);background:rgba(245,166,35,0.1);padding:1px 4px;border-radius:2px;border:1px solid rgba(245,166,35,0.3)">TODAY</span>' : '';
-    return `<tr style="border-left:3px solid ${sigCol}">
-      <td style="color:var(--muted);font-size:0.52rem">${r.date || '—'}${inMemBadge}</td>
-      <td style="color:var(--muted);font-size:0.52rem">${r.time || '—'}</td>
-      <td><span style="color:${sigCol};font-weight:700;font-family:'Syne',sans-serif">${r.signal || '—'}</span></td>
-      <td style="font-weight:700">${r.price ? parseFloat(r.price).toFixed(3) : '—'}</td>
-      <td style="color:${scoreCol};font-weight:700">${r.score || '—'}</td>
-      <td style="color:${isBuy?'var(--buy)':'var(--sell)'};font-size:0.52rem">${tp1}</td>
-      <td style="color:${isBuy?'var(--buy)':'var(--sell)'};font-size:0.52rem">${tp2}</td>
-      <td style="color:${isBuy?'var(--buy)':'var(--sell)'};font-size:0.52rem">${tp3}</td>
-      <td style="color:${tpCol};font-weight:700">${r.tpHit || '—'}</td>
-      <td style="color:${winCol};font-weight:700">${winLabel}</td>
-      <td style="color:var(--wait);font-size:0.5rem">${(r.regime||'—').replace(/_/g,' ')}</td>
-      <td style="color:var(--muted);font-size:0.5rem">${r.session||'—'}</td>
-      <td style="color:var(--accent2);font-size:0.5rem">${r.wyckoff||'—'}</td>
-    </tr>`;
-  }).join('');
-}
-</script>
+</body>
+</html>

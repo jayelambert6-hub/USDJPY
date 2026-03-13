@@ -500,13 +500,16 @@ canvas{width:100% !important;}
   <div class="total-score"><span style="color:var(--muted)">TOTAL SCORE</span><span id="total-score-val" style="font-weight:700">—</span></div>
   <div class="learn-badge" id="learn-badge" style="color:var(--muted)">🧠 Learning engine — awaiting signal history</div>
   <!-- Auto TP display — populated from previous signal automatically -->
-  <div style="font-size:0.48rem;color:var(--muted);letter-spacing:2px;margin:8px 0 4px">TAKE PROFIT · LAST SIGNAL</div>
+  <div style="font-size:0.48rem;color:var(--muted);letter-spacing:2px;margin:8px 0 4px">TAKE PROFIT · STOP LOSS · LAST SIGNAL</div>
   <div class="tp-wrap" id="tp-wrap">
     <div class="tp-row"><span style="color:var(--muted)">Entry</span><span class="tp-price" id="tp-entry" style="color:var(--muted)">—</span></div>
     <div class="tp-row"><span style="color:var(--muted)">Direction</span><span id="tp-dir" style="font-weight:700;color:var(--muted)">—</span></div>
+    <div class="tp-row"><span style="color:var(--sell)">Stop Loss</span><span id="tp-sl" style="font-weight:700;color:var(--sell)">—</span></div>
+    <div class="tp-row"><span style="color:var(--muted);font-size:0.48rem">SL basis</span><span id="tp-sl-lbl" style="color:var(--muted);font-size:0.48rem">—</span></div>
     <div class="tp-row"><span id="tp-lbl-1" style="color:var(--muted)">TP1 · 1×ATR</span><span id="tp1-val" style="font-weight:700">—</span></div>
     <div class="tp-row"><span id="tp-lbl-2" style="color:var(--muted)">TP2 · 2×ATR</span><span id="tp2-val" style="font-weight:700">—</span></div>
     <div class="tp-row"><span id="tp-lbl-3" style="color:var(--muted)">TP3 · 3×ATR</span><span id="tp3-val" style="font-weight:700">—</span></div>
+    <div class="tp-row"><span style="color:var(--muted)">R:R (to TP2)</span><span id="tp-rr" style="font-weight:700;color:var(--muted)">—</span></div>
     <div class="tp-row"><span style="color:var(--muted)">Live P&amp;L</span><span id="tp-pnl" style="font-weight:700">—</span></div>
     <div class="tp-age" id="tp-age">Waiting for first BUY/SELL signal...</div>
   </div>
@@ -1098,6 +1101,8 @@ async function fetchAll(){
     const indD  =calcInd(candlesD);
     const indDXY=candlesDXY.length>10?calcInd(candlesDXY):null;
     lastInd=ind5m;
+    lastInd.h4=ind4h;  // store for HTF contradiction checks
+    lastInd.d=indD;    // store for HTF contradiction checks
     currentRSI5m=ind5m.rsi; currentRSI1h=ind1h.rsi;
 
     updatePrice();
@@ -1650,11 +1655,12 @@ function computeSignal(ind5m,ind15m,ind1h,ind4h,indD,indDXY){
   }
   const p=currentPrice; const sc={};
 
-  // ══ TIER 1: DAILY BIAS (macro direction, heaviest weight) ══════════════════
-  // Daily MA trend — sets the weekly directional bias
+  // ══ TIER 1: DAILY BIAS (macro direction) ══════════════════════════════════
+  // Reduced weight: daily trend is context, not a veto. Was ±5, now ±3.
+  // Single source shouldn't dominate 9 lower-TF sources.
   let tD=0;
-  if(indD.ma20&&indD.ma50)  tD+=indD.ma20>indD.ma50?3:-3;
-  if(indD.ma200&&p)         tD+=p>indD.ma200?2:-2;
+  if(indD.ma20&&indD.ma50)  tD+=indD.ma20>indD.ma50?2:-2;
+  if(indD.ma200&&p)         tD+=p>indD.ma200?1:-1;
   sc['D Trend']=tD;
 
   // Daily RSI — are we in bull or bear territory at macro level
@@ -1764,6 +1770,13 @@ function computeSignal(ind5m,ind15m,ind1h,ind4h,indD,indDXY){
   sc['Wyckoff']=currentWy==='Accumulation'||currentWy==='Markup'?1:
     currentWy==='Distribution'||currentWy==='Markdown'?-1:0;
 
+  // ── Stacked FVG penalty: multiple open FVGs in one direction = structural headwind
+  // 3+ bear FVGs above price means heavy overhead supply — penalise BUY signals
+  const openBearFVGsAbove=currentFVGs.filter(f=>f.type==='BEAR'&&!f.filled&&f.mid>p).length;
+  const openBullFVGsBelow=currentFVGs.filter(f=>f.type==='BULL'&&!f.filled&&f.mid<p).length;
+  if(openBearFVGsAbove>=3) sc['FVG']=Math.min(sc['FVG'],-3);
+  if(openBullFVGsBelow>=3) sc['FVG']=Math.max(sc['FVG'],3);
+
   // ══ TIER 6: NEW ENGINES ════════════════════════════════════════════════════
 
   // Tokyo Fix — during fix window, favour direction of fix range break
@@ -1776,11 +1789,11 @@ function computeSignal(ind5m,ind15m,ind1h,ind4h,indD,indDXY){
     else sc['Tokyo Fix']=0;
   } else sc['Tokyo Fix']=0;
 
-  // Intervention Risk — high risk suppresses BUY signals if we're at extreme highs
-  if(currentIntervRisk>70){
-    // Extreme intervention risk: if already bullish, penalise hard
-    sc['Interv Risk']= -3;
-  } else if(currentIntervRisk>50){
+  // Intervention Risk — extract .score from object (calcIntervRisk returns {score,factors})
+  const intervScore=currentIntervRisk&&typeof currentIntervRisk==='object'?currentIntervRisk.score:currentIntervRisk||0;
+  if(intervScore>70){
+    sc['Interv Risk']=-3;
+  } else if(intervScore>50){
     sc['Interv Risk']=-1;
   } else sc['Interv Risk']=0;
 
@@ -1875,8 +1888,55 @@ function computeSignal(ind5m,ind15m,ind1h,ind4h,indD,indDXY){
     return;
   }
 
-  // Threshold ±8 — raised to reflect full engine count (25+ sources)
-  const signal=total>=8?'BUY':total<=-8?'SELL':'WAIT';
+  // ── Wyckoff hard gate ────────────────────────────────────────────────────
+  // Markdown/Distribution = structural downtrend — block BUY signals outright
+  // Markup/Accumulation = structural uptrend — block SELL signals outright
+  // This is not a score reduction. It's a hard veto.
+  const wyPhase=currentWy||'';
+  if((wyPhase==='Markdown'||wyPhase==='Distribution')&&total>0){
+    setSignalUI('WAIT',total,sc,`⛔ Wyckoff ${wyPhase} — BUY blocked. Wait for phase change.`);
+    return;
+  }
+  if((wyPhase==='Markup'||wyPhase==='Accumulation')&&total<0){
+    setSignalUI('WAIT',total,sc,`⛔ Wyckoff ${wyPhase} — SELL blocked. Wait for phase change.`);
+    return;
+  }
+
+  // ── Regime counter-signal veto ───────────────────────────────────────────
+  // BUY in TRENDING_BEAR or SELL in TRENDING_BULL requires extreme score to override
+  const regimeName=currentRegime?currentRegime.name:'';
+  if(regimeName==='TRENDING_BEAR'&&total>0&&total<16){
+    setSignalUI('WAIT',total,sc,`⛔ Counter-trend BUY in TRENDING_BEAR regime. Needs score ≥+16 to override (current: +${total}).`);
+    return;
+  }
+  if(regimeName==='TRENDING_BULL'&&total<0&&total>-16){
+    setSignalUI('WAIT',total,sc,`⛔ Counter-trend SELL in TRENDING_BULL regime. Needs score ≤-16 to override (current: ${total}).`);
+    return;
+  }
+
+  // ── Momentum brake ───────────────────────────────────────────────────────
+  // If price has moved 2×ATR against the signal direction since the last signal,
+  // don't pile in — market is moving away from you
+  const atrB=lastInd.atr||0.05;
+  if(lastActionableSignal&&!lastActionableSignal.closed){
+    const lastType=lastActionableSignal.type;
+    const lastPrice=lastActionableSignal.price;
+    const adverse=(lastType==='BUY'&&currentPrice<lastPrice-atrB*2)||
+                  (lastType==='SELL'&&currentPrice>lastPrice+atrB*2);
+    if(adverse&&total>0&&lastType==='BUY'){
+      setSignalUI('WAIT',total,sc,`⚠ Momentum brake: price moved ${((lastPrice-currentPrice)*100).toFixed(1)} pip against last BUY. Wait for stabilisation.`);
+      return;
+    }
+    if(adverse&&total<0&&lastType==='SELL'){
+      setSignalUI('WAIT',total,sc,`⚠ Momentum brake: price moved ${((currentPrice-lastPrice)*100).toFixed(1)} pip against last SELL. Wait for stabilisation.`);
+      return;
+    }
+  }
+
+  // ── Regime-adjusted threshold ────────────────────────────────────────────
+  // RANGING markets require higher conviction — lots of false breakouts in chop
+  const threshold=regimeName==='RANGING'?12:8;
+  const signal=total>=threshold?'BUY':total<=-threshold?'SELL':'WAIT';
   setSignalUI(signal,total,sc,'');
 }
 
@@ -2889,11 +2949,17 @@ function setSignalUI(signal,score,scoreMap,suppressMsg){
     signal===lastActionableSignal.type&&
     (Date.now()-lastActionableSignal.timestamp)<SAME_DIR_WINDOW;
   if(sameDir){
-    // Show an "ADD" flag on the signal card instead of overwriting
     const addEl=document.getElementById('sig-add-flag');
     if(addEl){
-      addEl.textContent=`▲ ADD TO ${signal} — same direction within 60min. Entry @ ${currentPrice.toFixed(3)}, score ${(score>=0?'+':'')+score}. Consider adding to existing position rather than opening new trade.`;
+      // Check for HTF contradiction — warn if daily/4H oppose the add direction
+      const dBullNow=lastInd&&lastInd.d&&lastInd.d.ma20&&lastInd.d.ma50&&lastInd.d.ma20>lastInd.d.ma50;
+      const h4BullNow=lastInd&&lastInd.h4&&lastInd.h4.ma20&&lastInd.h4.ma50&&lastInd.h4.ma20>lastInd.h4.ma50;
+      const htfConflict=(signal==='BUY'&&(!dBullNow||!h4BullNow))||(signal==='SELL'&&(dBullNow||h4BullNow));
+      const htfWarn=htfConflict?` ⚠ HTF CONFLICT: ${signal==='BUY'?'Daily/4H not fully bullish':'Daily/4H not fully bearish'} — reduce size.`:'';
+      addEl.textContent=`▲ ADD TO ${signal} — same direction within 60min. Entry @ ${currentPrice.toFixed(3)}, score ${(score>=0?'+':'')+score}.${htfWarn} Consider adding to existing position rather than opening new trade.`;
       addEl.style.display='block';
+      addEl.style.borderColor=htfConflict?'var(--sell)':'var(--wait)';
+      addEl.style.color=htfConflict?'var(--sell)':'var(--wait)';
     }
     // Still update score display and indicators but don't create new history entry
     currentSignal=signal;
@@ -2990,6 +3056,7 @@ function setSignalUI(signal,score,scoreMap,suppressMsg){
   }
 
   currentSignal=signal;
+  lastScoreMap=Object.assign({},scoreMap); // always keep fresh copy
   const el=document.getElementById('signal-el');
   el.textContent=signal;el.className=`signal-display signal-${signal.toLowerCase()}`;
   const col=signal==='BUY'?'var(--buy)':signal==='SELL'?'var(--sell)':'var(--wait)';
@@ -3013,6 +3080,12 @@ function setSignalUI(signal,score,scoreMap,suppressMsg){
     if(tv){tv.textContent=(score>=0?'+':'')+score;tv.style.color=col;}
   }
   updateSignalAge();
+  // Keep topReasons on active entry fresh — fixes frozen topSources in DB records
+  if(lastActionableSignal&&!lastActionableSignal.closed){
+    lastActionableSignal.topReasons=Object.entries(scoreMap)
+      .filter(([,v])=>v!==0).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]))
+      .slice(0,3).map(([k,v])=>`${k}:${v>0?'+':''}${v}`).join(' ');
+  }
   renderSignalHistory();
 }
 
@@ -3538,6 +3611,63 @@ function _paintTP(e,closed){
   g('tp-entry').style.color=closed?'var(--muted)':tpCol;
   g('tp-dir').textContent=e.type;
   g('tp-dir').style.color=tpCol;
+
+  // ── Stop Loss calculation ──────────────────────────────────────────────────
+  // Uses nearest swing low (BUY) or swing high (SELL) from liquidity heatmap,
+  // falls back to 1.5×ATR below/above entry if no structural level found.
+  const atrSL=lastInd.atr||0.05;
+  let sl=null, slLbl='1.5×ATR';
+  // Try to find nearest structural level from liq heatmap data
+  if(ohlcv5m.length>20){
+    const recent=ohlcv5m.slice(-30);
+    if(isBuy){
+      // Find recent swing lows below entry
+      const swingLows=[];
+      for(let i=2;i<recent.length-2;i++){
+        if(recent[i].l<recent[i-1].l&&recent[i].l<recent[i-2].l&&
+           recent[i].l<recent[i+1].l&&recent[i].l<recent[i+2].l){
+          swingLows.push(recent[i].l);
+        }
+      }
+      const nearestLow=swingLows.filter(l=>l<e.price).sort((a,b)=>b-a)[0];
+      if(nearestLow&&(e.price-nearestLow)<atrSL*4){
+        sl=+(nearestLow-atrSL*0.2).toFixed(3); // just below swing low
+        slLbl=`Swing low ${nearestLow.toFixed(3)}`;
+      }
+    } else {
+      const swingHighs=[];
+      for(let i=2;i<recent.length-2;i++){
+        if(recent[i].h>recent[i-1].h&&recent[i].h>recent[i-2].h&&
+           recent[i].h>recent[i+1].h&&recent[i].h>recent[i+2].h){
+          swingHighs.push(recent[i].h);
+        }
+      }
+      const nearestHigh=swingHighs.filter(h=>h>e.price).sort((a,b)=>a-b)[0];
+      if(nearestHigh&&(nearestHigh-e.price)<atrSL*4){
+        sl=+(nearestHigh+atrSL*0.2).toFixed(3);
+        slLbl=`Swing high ${nearestHigh.toFixed(3)}`;
+      }
+    }
+  }
+  // ATR fallback
+  if(!sl) sl=+(e.price-mult*atrSL*1.5).toFixed(3);
+
+  // Store SL on entry for R:R calc
+  e.sl=sl; e.slLbl=slLbl;
+
+  const slEl=g('tp-sl'),slLblEl=g('tp-sl-lbl'),rrEl=g('tp-rr');
+  if(slEl){slEl.textContent=sl.toFixed(3);slEl.style.color=closed?'var(--muted)':'var(--sell)';}
+  if(slLblEl) slLblEl.textContent=slLbl;
+
+  // R:R to TP2
+  const risk=Math.abs(e.price-sl)*100;
+  const reward=Math.abs(e.tp2-e.price)*100;
+  const rr=risk>0?(reward/risk).toFixed(1):null;
+  if(rrEl){
+    rrEl.textContent=rr?`1 : ${rr}`:'—';
+    rrEl.style.color=rr>=2?'var(--buy)':rr>=1?'var(--wait)':'var(--sell)';
+  }
+
   // Update TP row labels dynamically with fib info
   const lbl1=document.getElementById('tp-lbl-1'),lbl2=document.getElementById('tp-lbl-2'),lbl3=document.getElementById('tp-lbl-3');
   if(lbl1) lbl1.textContent=`TP1 · ${e.tp1Lbl||'1×ATR'}`;
@@ -3650,9 +3780,16 @@ function calcMarketRegime(ohlcv5m, candles1h, candles4h, ind5m, ind4h, indD){
   const conf=Math.round((winner[1]/totalVotes)*100);
   const name=winner[0];
 
-  // Duration tracking
-  if(name!==lastRegimeName){regimeDurationCandles=0;lastRegimeName=name;}
-  else regimeDurationCandles++;
+  // Duration tracking + lock: regime must hold for 8+ candles before it can change
+  // Prevents the rapid RANGING→TRENDING→BREAKOUT cycling seen in choppy sessions
+  const REGIME_LOCK=8;
+  if(name!==lastRegimeName){
+    if(regimeDurationCandles>=REGIME_LOCK||lastRegimeName===''){
+      regimeDurationCandles=0;lastRegimeName=name;
+    }
+    // else: lock still active — keep previous regime, increment counter
+    else { regimeDurationCandles++; }
+  } else regimeDurationCandles++;
 
   return{name,conf,votes,adxProxy,atrRatio:atrRat,bbwRatio,dirUp,efficiency:+(efficiency*100).toFixed(0),duration:regimeDurationCandles};
 }
@@ -3807,6 +3944,7 @@ function buildSignalRecord(entry){
     tp3Hit:tp3Hit?1:0,
     pipOutcome,
     nextSignal:entry.nextSig||'—',
+    // Market conditions at signal time
     regime:currentRegime?currentRegime.name:'UNKNOWN',
     regimeConf:currentRegime?currentRegime.conf:0,
     session:entry.session||'—',
